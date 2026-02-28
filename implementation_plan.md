@@ -92,6 +92,9 @@ Since setting up real WhatsApp/IVR APIs takes time/money, we will build a **High
 ### Phase 3: Integration & "Wow" Features
 *   [ ] Implement **Multilingual Support** (Hindi/English).
 *   [ ] Implement **Document OCR** (Mocked or Real Bedrock Vision).
+*   [ ] Implement **Outbound Calling (Click-to-Call)**:
+    *   Backend: `StartOutboundVoiceContact` API integration.
+    *   Frontend: Call status tracking and UI controls.
 
 ## Verification Plan
 ### Automated Tests
