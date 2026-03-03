@@ -88,6 +88,13 @@ export default function RegisterPage() {
                     >
                         {loading ? 'Processing...' : 'Register & Start Chat'}
                     </button>
+
+                    <div className="text-center pt-2">
+                        <p className="text-slate-500 text-sm font-medium">
+                            Already have an account?
+                            <a href="/login" className="ml-2 text-blue-600 font-bold hover:underline">Login here</a>
+                        </p>
+                    </div>
                 </form>
             </div>
         </main>
