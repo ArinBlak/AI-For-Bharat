@@ -13,13 +13,16 @@ interface Message {
 export default function ChatPage() {
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState('');
+    const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [agentBrowserVisible, setAgentBrowserVisible] = useState(false);
     const [userPhone, setUserPhone] = useState<string | null>(null);
     const [userName, setUserName] = useState<string | null>(null);
+    const [detectedScheme, setDetectedScheme] = useState<string | null>(null);
 
     const iframeRef = useRef<HTMLIFrameElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         const phone = localStorage.getItem('user_phone');
@@ -70,90 +73,131 @@ export default function ChatPage() {
 
     const handleSendMessage = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!input.trim() || isLoading) return;
+        if ((!input.trim() && selectedFiles.length === 0) || isLoading) return;
 
         const userMessage = input.trim();
+        const filesToSend = [...selectedFiles];
+
         setInput('');
-        setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+        setSelectedFiles([]);
+
+        // Display message with files if exist
+        let displayContent = userMessage;
+        if (filesToSend.length > 0) {
+            const fileList = filesToSend.map(f => `📎 *${f.name}*`).join('\n');
+            displayContent += `\n\n${fileList}`;
+        }
+
+        setMessages(prev => [...prev, { role: 'user', content: displayContent }]);
         setIsLoading(true);
 
         // Add a placeholder for the assistant's stream
         setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
 
         try {
-            const response = await fetch('http://localhost:8000/api/chat', {
+            const formData = new FormData();
+            formData.append('user_text', userMessage || "Evaluating documents...");
+            formData.append('user_name', userName || "Citizen");
+
+            if (filesToSend.length > 0) {
+                filesToSend.forEach(file => {
+                    formData.append('documents', file);
+                });
+                // If we detected a scheme previously, send it
+                if (detectedScheme) {
+                    formData.append('scheme_id', detectedScheme);
+                }
+            }
+
+            const response = await fetch('http://localhost:8000/api/agent', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    user_text: userMessage
-                }),
+                body: formData,
             });
 
             if (!response.ok) throw new Error('API request failed');
-            if (!response.body) throw new Error('No response body');
 
-            const reader = response.body.getReader();
-            const decoder = new TextDecoder();
-            let accumulatedContent = '';
+            const contentType = response.headers.get('content-type') || '';
 
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
+            // ----- ROUTE A: JSON response (apply/clarify routes) -----
+            if (contentType.includes('application/json')) {
+                const data = await response.json();
+                const responseText = data.response || data.agent_response || JSON.stringify(data);
+                setMessages(prev => {
+                    const newMessages = [...prev];
+                    newMessages[newMessages.length - 1] = {
+                        role: 'assistant',
+                        content: responseText
+                    };
+                    return newMessages;
+                });
 
-                const chunk = decoder.decode(value);
-                const lines = chunk.split('\n');
+                // ----- ROUTE B: SSE streaming response (query route) -----
+            } else {
+                if (!response.body) throw new Error('No response body');
 
-                for (const line of lines) {
-                    if (line.startsWith('data: ')) {
-                        const dataStr = line.slice(6).trim();
-                        if (dataStr === '[DONE]') continue;
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let accumulatedContent = '';
 
-                        try {
-                            const data = JSON.parse(dataStr);
-                            if (data.content) {
-                                accumulatedContent += data.content;
-                                // Update the LAST message with the accumulated stream
-                                setMessages(prev => {
-                                    const newMessages = [...prev];
-                                    newMessages[newMessages.length - 1] = {
-                                        role: 'assistant',
-                                        content: accumulatedContent
-                                    };
-                                    return newMessages;
-                                });
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const dataStr = line.slice(6).trim();
+                            if (dataStr === '[DONE]') continue;
+
+                            try {
+                                const data = JSON.parse(dataStr);
+                                if (data.content) {
+                                    accumulatedContent += data.content;
+                                    setMessages(prev => {
+                                        const newMessages = [...prev];
+                                        newMessages[newMessages.length - 1] = {
+                                            role: 'assistant',
+                                            content: accumulatedContent
+                                        };
+                                        return newMessages;
+                                    });
+                                }
+                                if (data.meta && data.meta.detected_scheme) {
+                                    setDetectedScheme(data.meta.detected_scheme);
+                                }
+                            } catch (e) {
+                                console.error('Error parsing stream chunk:', e);
                             }
-                        } catch (e) {
-                            console.error('Error parsing stream chunk:', e);
                         }
+                    }
+                }
+
+                // After stream is done, check for actions in the final content
+                const actionRegex = /\[ACTION:\s*OPEN_PORTAL\s*\|\s*scheme:\s*(.*?)\s*\|\s*details:\s*(\{.*?\})\]/;
+                const match = accumulatedContent.match(actionRegex);
+
+                if (match) {
+                    try {
+                        const scheme = match[1].trim();
+                        const details = JSON.parse(match[2]);
+                        const payload = { scheme, details };
+
+                        const cleanedContent = accumulatedContent.replace(actionRegex, '').trim();
+                        setMessages(prev => {
+                            const newMessages = [...prev];
+                            newMessages[newMessages.length - 1].content = cleanedContent || "Opening portal for application...";
+                            return newMessages;
+                        });
+
+                        triggerPortalApplication(payload);
+                    } catch (err) {
+                        console.error('Action execution failed:', err);
                     }
                 }
             }
 
-            // After stream is done, check for actions in the final content
-            const actionRegex = /\[ACTION:\s*OPEN_PORTAL\s*\|\s*scheme:\s*(.*?)\s*\|\s*details:\s*(\{.*?\})\]/;
-            const match = accumulatedContent.match(actionRegex);
-
-            if (match) {
-                try {
-                    const scheme = match[1].trim();
-                    const details = JSON.parse(match[2]);
-                    const payload = { scheme, details };
-
-                    // Clean the action tag from the UI message
-                    const cleanedContent = accumulatedContent.replace(actionRegex, '').trim();
-                    setMessages(prev => {
-                        const newMessages = [...prev];
-                        newMessages[newMessages.length - 1].content = cleanedContent || "Opening portal for application...";
-                        return newMessages;
-                    });
-
-                    triggerPortalApplication(payload);
-                } catch (err) {
-                    console.error('Action execution failed:', err);
-                }
-            }
 
         } catch (error) {
             console.error('Chat Error:', error);
@@ -247,22 +291,69 @@ export default function ChatPage() {
 
                     {/* Chat Input - Floating Indigenous Design */}
                     <div className="p-6 bg-white border-t border-slate-100">
-                        <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex gap-4">
-                            <input
-                                type="text"
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                placeholder="Puchhiye: PM Kisan eligibility kya hai?"
-                                className="flex-1 bg-slate-50 border-2 border-slate-100 rounded-2xl px-6 py-5 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FF9933] focus:bg-white transition-all font-semibold shadow-sm"
-                                disabled={isLoading}
-                            />
-                            <button
-                                type="submit"
-                                disabled={!input.trim() || isLoading}
-                                className="bg-[#138808] hover:bg-[#0f6c06] disabled:bg-slate-200 disabled:text-slate-400 text-white px-8 rounded-2xl transition-all shadow-lg active:scale-95 flex items-center justify-center border-b-4 border-[#0a4d04]"
-                            >
-                                <span className="font-black">SEND</span>
-                            </button>
+                        <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex flex-col gap-2">
+                            {selectedFiles.length > 0 && (
+                                <div className="flex flex-wrap gap-2 mb-2 animate-in slide-in-from-bottom-2">
+                                    {selectedFiles.map((file, idx) => (
+                                        <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 border border-orange-100 rounded-xl">
+                                            <span className="text-[10px] font-bold text-orange-700 truncate max-w-[120px]">📎 {file.name}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))}
+                                                className="text-orange-300 hover:text-orange-500 transition-colors"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="flex gap-4">
+                                <div className="flex-1 relative flex items-center">
+                                    <button
+                                        type="button"
+                                        onClick={() => fileInputRef.current?.click()}
+                                        className="absolute left-3 w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-[#FF9933] hover:text-white transition-all z-10"
+                                        title="Upload Document"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                        </svg>
+                                    </button>
+                                    <input
+                                        type="file"
+                                        ref={fileInputRef}
+                                        className="hidden"
+                                        multiple
+                                        onChange={(e) => {
+                                            const files = Array.from(e.target.files || []);
+                                            if (files.length > 0) {
+                                                setSelectedFiles(prev => [...prev, ...files]);
+                                            }
+                                            // Reset value so same file can be selected again if removed
+                                            e.target.value = '';
+                                        }}
+                                        accept=".pdf,image/*"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={input}
+                                        onChange={(e) => setInput(e.target.value)}
+                                        placeholder="Puchhiye: PM Kisan eligibility kya hai?"
+                                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-16 pr-6 py-5 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FF9933] focus:bg-white transition-all font-semibold shadow-sm"
+                                        disabled={isLoading}
+                                    />
+                                </div>
+                                <button
+                                    type="submit"
+                                    disabled={(!input.trim() && selectedFiles.length === 0) || isLoading}
+                                    className="bg-[#138808] hover:bg-[#0f6c06] disabled:bg-slate-200 disabled:text-slate-400 text-white px-8 rounded-2xl transition-all shadow-lg active:scale-95 flex items-center justify-center border-b-4 border-[#0a4d04]"
+                                >
+                                    <span className="font-black">SEND</span>
+                                </button>
+                            </div>
                         </form>
                         <p className="text-center text-[10px] text-slate-400 mt-4 font-bold uppercase tracking-widest">Digital India • Yojana-Setu AI Powered</p>
                     </div>
