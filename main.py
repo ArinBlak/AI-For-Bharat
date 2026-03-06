@@ -2,7 +2,7 @@ import os
 import json
 import httpx
 from typing import List, Optional
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Request
 from fastapi.responses import StreamingResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -458,6 +458,98 @@ async def voice_agent_orchestrator(
     finally:
         if os.path.exists(temp_audio_path):
             os.remove(temp_audio_path)
+
+# ---------------------------------------------------------
+# IVR (Twilio Phone Call) Endpoints
+# ---------------------------------------------------------
+from fastapi.responses import Response
+
+@app.post("/api/ivr/welcome")
+async def ivr_welcome():
+    """Twilio webhook: Answers the call and greets the user, then listens."""
+    twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Aditi" language="hi-IN">
+        नमस्ते! योजना सेतु में आपका स्वागत है। मैं आपकी सरकारी योजनाओं में मदद कर सकता हूँ। कृपया अपना सवाल बोलिए।
+    </Say>
+    <Gather input="speech" action="/api/ivr/handle-speech" method="POST" speechTimeout="3" language="hi-IN">
+        <Say voice="Polly.Aditi" language="hi-IN">मैं सुन रहा हूँ...</Say>
+    </Gather>
+    <Say voice="Polly.Aditi" language="hi-IN">कोई आवाज़ नहीं मिली। कृपया दोबारा कॉल करें।</Say>
+</Response>"""
+    return Response(content=twiml, media_type="application/xml")
+
+@app.post("/api/ivr/handle-speech")
+async def ivr_handle_speech(request: Request):
+    """Twilio webhook: Receives transcribed speech, queries RAG, and speaks the answer."""
+    form_data = await request.form()
+    speech_result = form_data.get("SpeechResult", "")
+    caller_number = form_data.get("From", "Unknown")
+    
+    print(f"\n📞 IVR CALL from {caller_number}")
+    print(f"🎙️ Caller said: {speech_result}")
+    
+    if not speech_result:
+        twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Aditi" language="hi-IN">माफ कीजिये, मुझे आपकी आवाज़ नहीं सुनाई दी।</Say>
+    <Redirect method="POST">/api/ivr/welcome</Redirect>
+</Response>"""
+        return Response(content=twiml, media_type="application/xml")
+    
+    try:
+        # 1. Search knowledge base
+        retrieved_facts = await async_high_quality_search(speech_result)
+        context_string = "\n".join(retrieved_facts)
+        
+        # 2. Language detection
+        is_hindi = bool(re.search(r'[\u0900-\u097F]', speech_result))
+        target_lang = "Hindi" if is_hindi else "English"
+        
+        # 3. Generate response via LLM
+        ivr_prompt = f"""You are 'Shubh', a friendly AI caseworker on a phone call for Yojana-Setu.
+        The caller asked: "{speech_result}"
+        
+        FACTS: {context_string or 'General government scheme guidance.'}
+        
+        RULES:
+        - Respond in {target_lang} ONLY.
+        - Keep the answer SHORT (2-3 sentences max) since this is a phone call.
+        - Be warm and helpful. End by asking if they have more questions."""
+
+        chat_response = sarvam_client.chat.completions(
+            messages=[
+                {"role": "system", "content": ivr_prompt},
+                {"role": "user", "content": speech_result}
+            ]
+        )
+        agent_text = chat_response.choices[0].message.content
+        print(f"🤖 AI Response: {agent_text}")
+        
+        # 4. Use Polly voice via TwiML (simpler than Sarvam TTS for phone)
+        polly_lang = "hi-IN" if is_hindi else "en-IN"
+        polly_voice = "Polly.Aditi" if is_hindi else "Polly.Aditi"
+        
+        # Escape XML special characters
+        safe_text = agent_text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
+        
+        twiml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="{polly_voice}" language="{polly_lang}">{safe_text}</Say>
+    <Gather input="speech" action="/api/ivr/handle-speech" method="POST" speechTimeout="3" language="hi-IN">
+        <Say voice="{polly_voice}" language="{polly_lang}">{"और कोई सवाल है तो बोलिए।" if is_hindi else "Please ask your next question."}</Say>
+    </Gather>
+    <Say voice="{polly_voice}" language="{polly_lang}">{"धन्यवाद! योजना सेतु की ओर से शुभकामनाएं।" if is_hindi else "Thank you for calling Yojana Setu. Goodbye!"}</Say>
+</Response>"""
+        return Response(content=twiml, media_type="application/xml")
+        
+    except Exception as e:
+        print(f"❌ IVR Error: {e}")
+        twiml = """<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+    <Say voice="Polly.Aditi" language="hi-IN">माफ कीजिये, कुछ तकनीकी समस्या है। कृपया बाद में कॉल करें।</Say>
+</Response>"""
+        return Response(content=twiml, media_type="application/xml")
 
 @app.post("/api/agent")
 async def agent_orchestrator(
