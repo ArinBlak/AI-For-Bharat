@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { useSearchParams, useRouter } from 'next/navigation';
 
 interface Message {
     role: 'user' | 'assistant' | 'system';
@@ -18,35 +19,67 @@ export default function ChatPage() {
     const [userPhone, setUserPhone] = useState<string | null>(null);
     const [userName, setUserName] = useState<string | null>(null);
     const [detectedScheme, setDetectedScheme] = useState<string | null>(null);
+    const [requiredDocs, setRequiredDocs] = useState<string[]>([]);
+    const [showPortal, setShowPortal] = useState(false);
+    const [portalUrl, setPortalUrl] = useState('/mock-gov/index.html');
+    const [isRecording, setIsRecording] = useState(false);
+    const [sessionId, setSessionId] = useState<string>('');
+
+    const router = useRouter();
 
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
 
     useEffect(() => {
         const phone = localStorage.getItem('user_phone');
         const name = localStorage.getItem('user_name');
+        const fallbackName = name ? name : "Guest";
+
+        const params = new URLSearchParams(window.location.search);
+        let currentSessionId = params.get('session_id');
+
+        const welcomeMessage: Message = {
+            role: 'assistant',
+            content: `Namaste ${fallbackName}! Main Yojana-Setu AI hoon. Main aapki sarkari yojanaon ke baare mein jaankari dene aur aavedan (apply) karne mein madad kar sakta hoon.`
+        };
+
+        if (!currentSessionId) {
+            currentSessionId = `sess_${Math.random().toString(36).substring(2, 9)}_${Date.now()}`;
+            setSessionId(currentSessionId);
+            setMessages([welcomeMessage]);
+            router.replace(`/chat?session_id=${currentSessionId}`);
+        } else {
+            setSessionId(currentSessionId);
+            // Fetch existing messages
+            fetch(`http://localhost:8000/api/chat/messages/${currentSessionId}`)
+                .then(res => {
+                    if (!res.ok) throw new Error("Fetch failed");
+                    return res.json();
+                })
+                .then(data => {
+                    if (Array.isArray(data) && data.length > 0) {
+                        setMessages(data as Message[]);
+                    } else {
+                        // Empty session from DB, show welcome!
+                        setMessages([welcomeMessage]);
+                    }
+                })
+                .catch(err => {
+                    console.error("Failed to load chat:", err);
+                    setMessages([welcomeMessage]);
+                });
+        }
 
         if (phone && name) {
             setUserPhone(phone);
             setUserName(name);
-            setMessages([
-                {
-                    role: 'assistant',
-                    content: `Namaste ${name}! Main Yojna Setu AI hoon. Main aapki sarkari yojanaon (government schemes) ke baare mein jaankari paane aur aavedan (apply) karne mein madad kar sakta hoon. Aap mujhse kisi bhi scheme ke baare mein pooch sakte hain.`
-                }
-            ]);
         } else {
-            // If no registration, redirect back or use default
             setUserPhone('9876543210');
             setUserName('Guest User');
-            setMessages([
-                {
-                    role: 'assistant',
-                    content: 'Namaste! Kripya register karein ya chat shuru karein.'
-                }
-            ]);
         }
-    }, []);
+    }, [router]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -56,10 +89,13 @@ export default function ChatPage() {
         scrollToBottom();
     }, [messages]);
 
-
-    const [isRecording, setIsRecording] = useState(false);
-    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-    const audioChunksRef = useRef<Blob[]>([]);
+    useEffect(() => {
+        if (detectedScheme === 'pmjdy') {
+            setPortalUrl('/mock-pmjdy/index.html');
+        } else {
+            setPortalUrl('/mock-gov/index.html');
+        }
+    }, [detectedScheme]);
 
     const startRecording = async () => {
         try {
@@ -67,24 +103,18 @@ export default function ChatPage() {
             const mediaRecorder = new MediaRecorder(stream);
             mediaRecorderRef.current = mediaRecorder;
             audioChunksRef.current = [];
-
             mediaRecorder.ondataavailable = (event) => {
-                if (event.data.size > 0) {
-                    audioChunksRef.current.push(event.data);
-                }
+                if (event.data.size > 0) audioChunksRef.current.push(event.data);
             };
-
             mediaRecorder.onstop = () => {
-                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
                 handleVoiceMessage(audioBlob);
                 stream.getTracks().forEach(track => track.stop());
             };
-
             mediaRecorder.start();
             setIsRecording(true);
         } catch (err) {
             console.error("Mic access denied:", err);
-            alert("Kripya microphone access allow karein.");
         }
     };
 
@@ -97,14 +127,13 @@ export default function ChatPage() {
 
     const handleVoiceMessage = async (audioBlob: Blob) => {
         setIsLoading(true);
-        // Add a temporary "User is speaking..." message
-        setMessages(prev => [...prev, { role: 'user', content: "🎙️ Processing voice..." }]);
-        setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
+        setMessages(prev => [...prev, { role: 'user', content: "🎙️ Processing voice..." }, { role: 'assistant', content: '' }]);
 
         try {
             const formData = new FormData();
-            formData.append('audio', audioBlob, 'voice.wav');
+            formData.append('audio', audioBlob, 'voice.webm');
             formData.append('user_name', userName || "Citizen");
+            formData.append('user_id', userPhone || "9876543210");
             if (detectedScheme) formData.append('scheme_id', detectedScheme);
 
             const response = await fetch('http://localhost:8000/api/voice-agent', {
@@ -112,44 +141,20 @@ export default function ChatPage() {
                 body: formData,
             });
 
-            if (!response.ok) throw new Error('Voice API failed');
-
             const data = await response.json();
-
-            // Update messages with transcribed text and agent reply
             setMessages(prev => {
                 const newMessages = [...prev];
-                // Update user transcript
-                newMessages[newMessages.length - 2] = {
-                    role: 'user',
-                    content: `🎙️ ${data.user_text}`
-                };
-                // Update assistant response
-                newMessages[newMessages.length - 1] = {
-                    role: 'assistant',
-                    content: data.agent_text
-                };
+                newMessages[newMessages.length - 2] = { role: 'user', content: `🎙️ ${data.user_text}` };
+                newMessages[newMessages.length - 1] = { role: 'assistant', content: data.agent_text };
                 return newMessages;
             });
 
-            if (data.meta?.scheme) setDetectedScheme(data.meta.scheme);
-
-            // Play the audio response
             if (data.audio_base64) {
                 const audio = new Audio(`data:audio/mp3;base64,${data.audio_base64}`);
                 audio.play();
             }
-
         } catch (error) {
             console.error('Voice Error:', error);
-            setMessages(prev => {
-                const newMessages = [...prev];
-                newMessages[newMessages.length - 1] = {
-                    role: 'assistant',
-                    content: 'Kshama kijiye, awaaz samajhne mein dikkat hui.'
-                };
-                return newMessages;
-            });
         } finally {
             setIsLoading(false);
         }
@@ -161,36 +166,43 @@ export default function ChatPage() {
 
         const userMessage = input.trim();
         const filesToSend = [...selectedFiles];
-
         setInput('');
         setSelectedFiles([]);
 
-        // Display message with files if exist
         let displayContent = userMessage;
         if (filesToSend.length > 0) {
-            const fileList = filesToSend.map(f => `📎 *${f.name}*`).join('\n');
-            displayContent += `\n\n${fileList}`;
+            displayContent += `\n\n${filesToSend.map(f => `📎 *${f.name}*`).join('\n')}`;
+            // If files are sent, we are likely applying. Show portal.
+            setShowPortal(true);
+
+            // Trigger visual auto-fill in the dummy website preview
+            setTimeout(() => {
+                fetch(`http://localhost:8000/api/profile/${userPhone || "9876543210"}`)
+                    .then(res => res.json())
+                    .then(profile => {
+                        const iframe = document.querySelector('iframe');
+                        if (iframe && iframe.contentWindow) {
+                            iframe.contentWindow.postMessage({ type: 'AUTO_FILL', payload: profile }, '*');
+                        }
+                    })
+                    .catch(e => console.error("Could not fetch profile for preview auto-fill", e));
+            }, 1000);
         }
 
-        setMessages(prev => [...prev, { role: 'user', content: displayContent }]);
+        setMessages(prev => [...prev, { role: 'user', content: displayContent }, { role: 'assistant', content: '' }]);
         setIsLoading(true);
-
-        // Add a placeholder for the assistant's stream
-        setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
 
         try {
             const formData = new FormData();
             formData.append('user_text', userMessage || "Evaluating documents...");
             formData.append('user_name', userName || "Citizen");
+            formData.append('user_id', userPhone || "9876543210");
+            if (sessionId) formData.append('session_id', sessionId);
 
             if (filesToSend.length > 0) {
-                filesToSend.forEach(file => {
-                    formData.append('documents', file);
-                });
-                // If we detected a scheme previously, send it
-                if (detectedScheme) {
-                    formData.append('scheme_id', detectedScheme);
-                }
+                filesToSend.forEach(file => formData.append('documents', file));
+                if (detectedScheme) formData.append('scheme_id', detectedScheme);
+                if (requiredDocs.length > 0) formData.append('doc_types', requiredDocs.join(','));
             }
 
             const response = await fetch('http://localhost:8000/api/agent', {
@@ -198,145 +210,128 @@ export default function ChatPage() {
                 body: formData,
             });
 
-            if (!response.ok) throw new Error('API request failed');
-
             const contentType = response.headers.get('content-type') || '';
 
-            // ----- ROUTE A: JSON response (apply/clarify routes) -----
             if (contentType.includes('application/json')) {
                 const data = await response.json();
-                const responseText = data.response || data.agent_response || JSON.stringify(data);
+                if (data.scheme_id) setDetectedScheme(data.scheme_id);
+                if (data.required_docs) setRequiredDocs(data.required_docs);
+
+                // Show portal if an action is required or taking place
+                if (data.action === 'upload_documents' || data.status === 'success') {
+                    setShowPortal(true);
+                }
+
+                if (data.status === 'success') {
+                    // Trigger the final submission animation in the preview
+                    setTimeout(() => {
+                        const iframe = document.querySelector('iframe');
+                        if (iframe && iframe.contentWindow) {
+                            iframe.contentWindow.postMessage({ type: 'AUTO_SUBMIT' }, '*');
+                        }
+                    }, 500);
+                }
+
                 setMessages(prev => {
                     const newMessages = [...prev];
-                    newMessages[newMessages.length - 1] = {
-                        role: 'assistant',
-                        content: responseText
-                    };
+                    newMessages[newMessages.length - 1] = { role: 'assistant', content: data.response || data.agent_response };
                     return newMessages;
                 });
-
-                // ----- ROUTE B: SSE streaming response (query route) -----
             } else {
-                if (!response.body) throw new Error('No response body');
-
-                const reader = response.body.getReader();
+                const reader = response.body?.getReader();
                 const decoder = new TextDecoder();
-                let accumulatedContent = '';
+                let accumulated = '';
+                if (!reader) return;
 
                 while (true) {
                     const { value, done } = await reader.read();
                     if (done) break;
-
                     const chunk = decoder.decode(value);
                     const lines = chunk.split('\n');
-
                     for (const line of lines) {
                         if (line.startsWith('data: ')) {
-                            const dataStr = line.slice(6).trim();
-                            if (dataStr === '[DONE]') continue;
-
                             try {
-                                const data = JSON.parse(dataStr);
+                                const data = JSON.parse(line.slice(6));
                                 if (data.content) {
-                                    accumulatedContent += data.content;
+                                    accumulated += data.content;
                                     setMessages(prev => {
                                         const newMessages = [...prev];
-                                        newMessages[newMessages.length - 1] = {
-                                            role: 'assistant',
-                                            content: accumulatedContent
-                                        };
+                                        newMessages[newMessages.length - 1] = { role: 'assistant', content: accumulated };
                                         return newMessages;
                                     });
                                 }
-                                if (data.meta && data.meta.detected_scheme) {
-                                    setDetectedScheme(data.meta.detected_scheme);
-                                }
-                            } catch (e) {
-                                console.error('Error parsing stream chunk:', e);
-                            }
+                                if (data.meta?.detected_scheme) setDetectedScheme(data.meta.detected_scheme);
+                            } catch (e) { }
                         }
                     }
                 }
             }
-
-
         } catch (error) {
             console.error('Chat Error:', error);
-            setMessages(prev => {
-                const newMessages = [...prev];
-                newMessages[newMessages.length - 1] = {
-                    role: 'assistant',
-                    content: 'Maaf kijiye, server se judne mein dikkat ho rahi hai.'
-                };
-                return newMessages;
-            });
         } finally {
             setIsLoading(false);
         }
     };
 
     return (
-        <div className="flex flex-col h-screen bg-white text-slate-800 overflow-hidden font-sans">
-            {/* Indigenous Tiranga Header */}
-            <header className="flex items-center justify-between px-6 py-4 bg-white border-b-4 border-slate-100 shrink-0 z-20 shadow-[0_4px_20px_-5px_rgba(255,153,51,0.2),0_4px_20px_-5px_rgba(19,136,8,0.2)]">
+        <div className="flex h-screen bg-white text-slate-800 overflow-hidden font-sans">
+            {/* Tiranga Header */}
+            <header className="fixed top-0 left-0 right-0 h-20 bg-white border-b-4 border-slate-100 flex items-center justify-between px-10 z-50 shadow-sm">
                 <div className="flex items-center gap-4">
-                    <Link href="/register" className="text-slate-400 hover:text-blue-600 transition-colors">
+                    <Link href="/" className="text-slate-400 hover:text-blue-600 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
                         </svg>
                     </Link>
-                    <div className="border-2 border-blue-100 px-3 py-1 rounded-xl bg-blue-50/30 shadow-[0_0_15px_rgba(59,130,246,0.1)]">
+                    <div className="border-2 border-blue-100 px-4 py-1 rounded-xl bg-blue-50/20">
                         <h1 className="text-2xl font-black tracking-tighter">
                             <span className="text-[#FF9933]">Yojana</span>
-                            <span className="text-slate-200 transition-opacity">-</span>
+                            <span className="text-slate-200">-</span>
                             <span className="text-[#138808]">Setu</span>
                         </h1>
                     </div>
                 </div>
-
-                <div className="flex gap-3">
+                <div className="flex gap-4">
+                    <button onClick={() => setShowPortal(!showPortal)} className={`px-4 py-2 border-2 rounded-xl text-xs font-black transition-all ${showPortal ? 'bg-orange-50 border-[#FF9933] text-[#FF9933]' : 'bg-slate-50 border-slate-200 text-slate-400'}`}>
+                        PORTAL VIEW
+                    </button>
                     <Link href="/" className="px-4 py-2 bg-slate-50 border-2 border-slate-200 rounded-xl text-xs font-black text-slate-600 hover:bg-slate-100 transition-all">
                         HOME
                     </Link>
                 </div>
             </header>
 
-            <div className="flex flex-1 overflow-hidden relative">
-                {/* Chat Panel (Full width focus) */}
-                <main className="flex-1 transition-all duration-700 flex flex-col bg-white">
-                    <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-8 no-scrollbar">
-                        <div className="max-w-4xl mx-auto space-y-10">
+            <div className="flex w-full mt-20 relative">
+                {/* Chat Panel */}
+                <main className={`${showPortal ? 'w-[55%]' : 'w-full'} flex flex-col transition-all duration-500 bg-white`}>
+                    <div className="flex-1 overflow-y-auto px-6 py-10 space-y-10 custom-scrollbar">
+                        <div className="max-w-4xl mx-auto space-y-10 pb-32">
                             {messages.map((msg, idx) => (
-                                <div
-                                    key={idx}
-                                    className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-700`}
-                                >
+                                <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-in fade-in slide-in-from-bottom-4 duration-500`}>
                                     <div className={`
-                                        max-w-[85%] sm:max-w-[75%] px-6 py-5 rounded-2xl transition-all
+                                        max-w-[85%] px-6 py-5 rounded-2xl relative
                                         ${msg.role === 'user'
-                                            ? 'bg-orange-50 border-2 border-[#FF9933] text-orange-900 shadow-sm'
-                                            : 'bg-white text-slate-800 border-l-4 border-l-[#FF9933] border-r-4 border-r-[#138808] border-t border-b border-slate-100 shadow-[0_10px_30px_-10px_rgba(255,153,51,0.2),0_10px_30px_-10px_rgba(19,136,8,0.2)]'}
+                                            ? 'bg-white border-2 border-[#FF9933] text-slate-800 shadow-sm'
+                                            : 'bg-white border-l-4 border-l-[#FF9933] border-r-4 border-r-[#138808] border-t border-b border-slate-100 shadow-lg shadow-slate-100'}
                                     `}>
-                                        <div className={`text-[10px] font-black uppercase tracking-widest mb-3 ${msg.role === 'user' ? 'text-orange-600' : 'text-[#FF9933]'}`}>
+                                        <div className={`text-[9px] font-black uppercase tracking-widest mb-2 ${msg.role === 'user' ? 'text-[#FF9933]' : 'text-orange-500'}`}>
                                             {msg.role === 'user' ? 'Citizen Request' : 'Yojna Setu Assistance'}
                                         </div>
-                                        <div className={`prose prose-sm max-w-none font-medium leading-[1.8] ${msg.role === 'user' ? 'prose-orange' : 'prose-slate'}`}>
-                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                                                {msg.content}
-                                            </ReactMarkdown>
+                                        <div className="prose prose-sm max-w-none text-slate-700 font-medium">
+                                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
                                         </div>
                                     </div>
                                 </div>
                             ))}
                             {isLoading && (
                                 <div className="flex justify-start">
-                                    <div className="bg-slate-50 border border-slate-200 px-5 py-4 rounded-2xl flex gap-3 items-center">
-                                        <div className="flex gap-1.5">
-                                            <span className="w-2 h-2 bg-[#FF9933] rounded-full animate-bounce"></span>
-                                            <span className="w-2 h-2 bg-slate-300 rounded-full animate-bounce [animation-delay:0.2s]"></span>
-                                            <span className="w-2 h-2 bg-[#138808] rounded-full animate-bounce [animation-delay:0.4s]"></span>
+                                    <div className="bg-slate-50 border border-slate-100 px-5 py-3 rounded-2xl flex gap-3 items-center">
+                                        <div className="flex gap-1">
+                                            <span className="w-1.5 h-1.5 bg-[#FF9933] rounded-full animate-bounce"></span>
+                                            <span className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce delay-100"></span>
+                                            <span className="w-1.5 h-1.5 bg-[#138808] rounded-full animate-bounce delay-200"></span>
                                         </div>
-                                        <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Processing Scheme Data...</span>
+                                        <span className="text-[10px] font-black text-slate-400">PROCESSING...</span>
                                     </div>
                                 </div>
                             )}
@@ -344,91 +339,77 @@ export default function ChatPage() {
                         </div>
                     </div>
 
-                    {/* Chat Input - Floating Indigenous Design */}
-                    <div className="p-6 bg-white border-t border-slate-100">
-                        <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex flex-col gap-2">
+                    {/* Floating Input Bar */}
+                    <div className="fixed bottom-10 left-0 right-0 z-40 pointer-events-none">
+                        <div className={`${showPortal ? 'w-[55%]' : 'w-full'} transition-all duration-500 px-6 pointer-events-auto`}>
+                            <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto bg-white border-2 border-slate-100 p-2 rounded-2xl shadow-2xl flex items-center gap-2">
+                                <button type="button" onClick={() => fileInputRef.current?.click()} className="w-12 h-12 flex items-center justify-center rounded-xl bg-slate-50 text-slate-400 hover:text-orange-500 hover:bg-orange-50 transition-colors">
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                                    </svg>
+                                </button>
+                                <input type="file" ref={fileInputRef} className="hidden" multiple onChange={(e) => setSelectedFiles(prev => [...prev, ...Array.from(e.target.files || [])])} />
+
+                                <input
+                                    type="text"
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                    placeholder="Puchhiye: PM Kisan eligibility kya hai?"
+                                    className="flex-1 py-3 px-2 outline-none font-medium text-slate-700 placeholder-slate-300"
+                                    disabled={isLoading}
+                                />
+
+                                <button type="button" onClick={isRecording ? stopRecording : startRecording} className={`w-12 h-12 flex items-center justify-center rounded-xl transition-all ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'text-slate-400 hover:bg-slate-50 hover:text-blue-500'}`}>
+                                    {isRecording ? (
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1 1 1 0 011 1v4a1 1 0 01-1 1 1 1 0 01-1-1v-4zM13 10a1 1 0 011-1 1 1 0 011 1v4a1 1 0 01-1 1 1 1 0 01-1-1v-4z" />
+                                        </svg>
+                                    ) : (
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+                                        </svg>
+                                    )}
+                                </button>
+
+                                <button
+                                    type="submit"
+                                    disabled={isLoading || (!input.trim() && selectedFiles.length === 0)}
+                                    className="px-8 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all disabled:bg-slate-200 disabled:text-slate-400 bg-[#138808] text-white hover:bg-[#0f6b06]"
+                                >
+                                    SEND
+                                </button>
+                            </form>
+
                             {selectedFiles.length > 0 && (
-                                <div className="flex flex-wrap gap-2 mb-2 animate-in slide-in-from-bottom-2">
-                                    {selectedFiles.map((file, idx) => (
-                                        <div key={idx} className="flex items-center gap-2 px-3 py-1.5 bg-orange-50 border border-orange-100 rounded-xl">
-                                            <span className="text-[10px] font-bold text-orange-700 truncate max-w-[120px]">📎 {file.name}</span>
-                                            <button
-                                                type="button"
-                                                onClick={() => setSelectedFiles(prev => prev.filter((_, i) => i !== idx))}
-                                                className="text-orange-300 hover:text-orange-500 transition-colors"
-                                            >
-                                                <svg xmlns="http://www.w3.org/2000/svg" className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                                                </svg>
-                                            </button>
+                                <div className="max-w-4xl mx-auto mt-2 flex flex-wrap gap-2 px-2">
+                                    {selectedFiles.map((f, i) => (
+                                        <div key={i} className="bg-blue-50 text-blue-600 px-3 py-1 rounded-lg text-[10px] font-bold border border-blue-100 flex items-center gap-2">
+                                            <span>📎 {f.name}</span>
+                                            <button type="button" onClick={() => setSelectedFiles(prev => prev.filter((_, idx) => idx !== i))} className="hover:text-red-500">×</button>
                                         </div>
                                     ))}
                                 </div>
                             )}
-                            <div className="flex gap-4">
-                                <div className="flex-1 relative flex items-center">
-                                    <button
-                                        type="button"
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="absolute left-3 w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 text-slate-500 hover:bg-[#FF9933] hover:text-white transition-all z-10"
-                                        title="Upload Document"
-                                    >
-                                        <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                                        </svg>
-                                    </button>
-                                    <input
-                                        type="file"
-                                        ref={fileInputRef}
-                                        className="hidden"
-                                        multiple
-                                        onChange={(e) => {
-                                            const files = Array.from(e.target.files || []);
-                                            if (files.length > 0) {
-                                                setSelectedFiles(prev => [...prev, ...files]);
-                                            }
-                                            e.target.value = '';
-                                        }}
-                                        accept=".pdf,image/*"
-                                    />
-                                    <input
-                                        type="text"
-                                        value={input}
-                                        onChange={(e) => setInput(e.target.value)}
-                                        placeholder="Puchhiye: PM Kisan eligibility kya hai?"
-                                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-16 pr-24 py-5 text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#FF9933] focus:bg-white transition-all font-semibold shadow-sm"
-                                        disabled={isLoading}
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={isRecording ? stopRecording : startRecording}
-                                        className={`absolute right-3 w-12 h-12 flex items-center justify-center rounded-xl transition-all z-10 ${isRecording ? 'bg-red-500 text-white animate-pulse' : 'bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white'}`}
-                                        title={isRecording ? "Stop Recording" : "Start Voice Chat"}
-                                    >
-                                        {isRecording ? (
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 10a1 1 0 011-1 1 1 0 011 1v4a1 1 0 01-1 1 1 1 0 01-1-1v-4zM13 10a1 1 0 011-1 1 1 0 011 1v4a1 1 0 01-1 1 1 1 0 01-1-1v-4z" />
-                                            </svg>
-                                        ) : (
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-                                            </svg>
-                                        )}
-                                    </button>
-                                </div>
-                                <button
-                                    type="submit"
-                                    disabled={(!input.trim() && selectedFiles.length === 0) || isLoading}
-                                    className="bg-[#138808] hover:bg-[#0f6c06] disabled:bg-slate-200 disabled:text-slate-400 text-white px-8 rounded-2xl transition-all shadow-lg active:scale-95 flex items-center justify-center border-b-4 border-[#0a4d04]"
-                                >
-                                    <span className="font-black">SEND</span>
-                                </button>
-                            </div>
-                        </form>
-                        <p className="text-center text-[10px] text-slate-400 mt-4 font-bold uppercase tracking-widest">Digital India • Yojana-Setu AI Powered</p>
+                        </div>
                     </div>
                 </main>
+
+                {/* Actual Website Sidebar */}
+                {showPortal && (
+                    <div className="w-[45%] h-[calc(100vh-80px)] border-l-4 border-slate-100 bg-slate-50 animate-in slide-in-from-right duration-500 overflow-hidden">
+                        <div className="h-full w-full relative">
+                            <iframe
+                                src={portalUrl}
+                                className="w-full h-full border-none"
+                                title="Government Portal"
+                            />
+                            <div className="absolute top-4 right-4 bg-[#003366] text-white px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-widest shadow-lg">
+                                Live Official Portal
+                            </div>
+                        </div>
+                    </div>
+                )}
             </div>
         </div>
     );

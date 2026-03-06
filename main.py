@@ -15,6 +15,7 @@ import re
 
 import chromadb
 from sarvamai import SarvamAI
+from groq import Groq
 from sentence_transformers import SentenceTransformer, CrossEncoder
 from backend.storage_service import StorageService
 
@@ -25,6 +26,7 @@ storage_service = StorageService()
 
 app = FastAPI(title="Yojana-Setu Phygital Backend")
 sarvam_client = SarvamAI(api_subscription_key=os.getenv("SARVAM_API_KEY"))
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
 app.add_middleware(
     CORSMiddleware,
@@ -174,8 +176,19 @@ class ChatRequest(BaseModel):
 @app.post("/register")
 async def register(
     username: str = Form(...),
-    email: str = Form(...),
-    phone: str = Form(...)
+    fathername: str = Form(""),
+    dob: str = Form(""),
+    gender: str = Form(""),
+    aadhaar: str = Form(""),
+    phone: str = Form(...),
+    email: str = Form(""),
+    category: str = Form(""),
+    income: str = Form(""),
+    address: str = Form(""),
+    state: str = Form(""),
+    district: str = Form(""),
+    city: str = Form(""),
+    pincode: str = Form(""),
 ):
     """
     Registers a new user and saves to DynamoDB.
@@ -184,10 +197,19 @@ async def register(
         profile = {
             "user_id": phone,
             "username": username,
-            "email": email,
+            "fathername": fathername,
+            "dob": dob,
+            "gender": gender,
+            "aadhaar": aadhaar,
             "phone": phone,
-            "aadhar": "", # To be collected by AI
-            "district": "", # To be collected by AI
+            "email": email,
+            "category": category,
+            "income": income,
+            "address": address,
+            "state": state,
+            "district": district,
+            "city": city,
+            "pincode": pincode,
             "status": "Registered"
         }
         success = storage_service.save_user_profile(profile)
@@ -240,6 +262,13 @@ Do not use jargon.
 
 Here are the facts you must use:
 {context_string}
+
+IMPORTANT GUIDELINES:
+- When a user asks about documents needed, required information, or how to apply, give a DETAILED and STRUCTURED answer.
+- List ALL specific form fields they need to fill (e.g., Full Name, Father's Name, Date of Birth, Gender, Aadhaar Number, Mobile Number, Category, Income, Address, State, District, PIN Code etc.).
+- Mention exact document requirements including accepted file formats (JPG, PNG, PDF) and maximum file sizes (2MB for documents, 1MB for photos).
+- For fields with dropdown options (like Gender, Category, State), list the available options.
+- Use numbered sections and bullet points for clarity.
 
 IMPORTANT - APPLICATION WORKFLOW:
 If the user wants to APPLY for a scheme, tells you they want help applying, or says "yes" to applying:
@@ -302,10 +331,15 @@ async def process_submission(
     chat_response = sarvam_client.chat.completions(
         messages=[{"role": "user", "content": system_prompt}]
     )
+    agent_response_text = chat_response.choices[0].message.content
+    
+    # This endpoint doesn't have session_id, so this part is not directly applicable here.
+    # The user's instruction seems to be for the agent_orchestrator function.
+    # I will apply the change to agent_orchestrator as intended.
     
     return {
         "status": submission_result["status"],
-        "agent_response": chat_response.choices[0].message.content
+        "agent_response": agent_response_text
     }
 
 # ---------------------------------------------------------
@@ -417,6 +451,25 @@ async def async_extract_user_details(ocr_text: str):
     return await loop.run_in_executor(None, extract_user_details, ocr_text)
 
 
+@app.get("/api/voice-agent/welcome")
+async def get_welcome_audio():
+    """
+    Returns the initial welcome greeting from Shubh (male voice) as base64 audio.
+    """
+    try:
+        greeting_text = "Namaste! Main Shubh hoon, Yojana Setu se aapka digital sahayak. Sarkari yojanaon se judi koi bhi jaankari chahiye, toh bas mujhe bataiye. Main yahan aapki sunne aur madad karne ke liye hoon. Boliye, aaj main aapki kya sahayata kar sakta hoon?"
+        tts_response = sarvam_client.text_to_speech.convert(
+            text=greeting_text,
+            target_language_code="hi-IN",
+            model="bulbul:v3",
+            speaker="shubh"
+        )
+        audio_base64 = tts_response.audios[0] if hasattr(tts_response, 'audios') else tts_response.get("audios", [""])[0]
+        return {"audio_base64": audio_base64}
+    except Exception as e:
+        print(f"❌ Welcome Audio Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch welcome audio")
+
 @app.post("/api/voice-agent")
 async def voice_agent_orchestrator(
     audio: UploadFile = File(...),
@@ -431,55 +484,69 @@ async def voice_agent_orchestrator(
     4. Return Text + Audio
     """
     # 1. Save temp audio
-    temp_audio_path = f"temp_voice_{uuid.uuid4()}.wav"
+    ext = audio.filename.split(".")[-1] if audio.filename else "wav"
+    temp_audio_path = f"temp_voice_{uuid.uuid4()}.{ext}"
     try:
         with open(temp_audio_path, "wb") as buffer:
             shutil.copyfileobj(audio.file, buffer)
             
-        # 2. Transcribe (STT)
+        # 2. Transcribe (STT) - using saarika:v2.5 which supports direct webm processing
         with open(temp_audio_path, "rb") as f:
             stt_response = sarvam_client.speech_to_text.transcribe(
                 file=f,
-                model="saaras:v3",
-                mode="transcribe"
+                model="saarika:v2.5"
             )
-        user_text = stt_response.transcript
+        user_text = getattr(stt_response, "transcript", None) or getattr(stt_response, "transcription", "")
         print(f"🎙️ Voice Transcript: {user_text}")
 
-        # 3. Decision Logic (Dynamic Language Response)
-        intent_result = await async_detect_intent(user_text)
-        detected_intent = intent_result["intent"]
-        detected_scheme = scheme_id or intent_result["scheme_id"]
-        
-        # Get context if it's a query
-        retrieved_facts = []
-        if detected_intent == "query":
-            retrieved_facts = await async_high_quality_search(user_text)
-        
-        context_string = "\n".join(retrieved_facts)
-        
-        # Unified Prompt to ensure language consistency
-        voice_system_prompt = f"""You are 'Shubh', a friendly AI caseworker for Yojana-Setu. 
-        USER CONTEXT: Name: {user_name}, Intent: {detected_intent}, Detected Scheme: {detected_scheme}.
-        FACTS FOR REFERENCE: {context_string or 'General government scheme guidance.'}
-        
-        TASK:
-        1. If the user is asking a question (query), answer clearly based on the facts.
-        2. If the user wants to apply and the scheme is not clear, ask them politely which scheme they are interested in.
-        3. If they want to apply and the scheme IS clear, tell them which documents they need to upload to the chat.
-        
-        CRITICAL RULES:
-        - Respond ONLY in the EXACT SAME LANGUAGE used by the user in their message: "{user_text}".
-        - If the message is in Hindi, respond in Hindi. If in English, respond in English.
-        - Keep the response concise and friendly, suitable for a voice conversation."""
+        if not user_text or user_text.strip() == "":
+            agent_text = "Maaf kijiyega, main aapki aawaz samajh nahi paya. Kripya thoda zor se aur saaf boliyee."
+            detected_intent = "unknown"
+            detected_scheme = None
+        else:
+            # 3. Decision Logic (Dynamic Language Response)
+            intent_result = await async_detect_intent(user_text)
+            detected_intent = intent_result["intent"]
+            detected_scheme = scheme_id or intent_result["scheme_id"]
+            
+            # Get context if it's a query
+            retrieved_facts = []
+            if detected_intent == "query":
+                retrieved_facts = await async_high_quality_search(user_text)
+            
+            context_string = "\n".join(retrieved_facts)
+            
+            # Unified Prompt to ensure language consistency
+            voice_system_prompt = f"""You are 'Shubh', a friendly and knowledgeable AI caseworker for Yojana-Setu interacting over a voice call. 
+            USER CONTEXT: Name: {user_name}, Intent: {detected_intent}, Detected Scheme: {detected_scheme}.
+            FACTS FOR REFERENCE: {context_string or 'General government scheme guidance.'}
+            
+            TASK:
+            1. If the user asks for an OVERVIEW or DETAILS of a scheme, you MUST provide a comprehensive explanation including:
+               - The purpose of the scheme.
+               - Who is eligible to apply.
+               - Key documents needed.
+               - Benefits of the scheme.
+               Explain this conversationally as if talking to a citizen. Do not just give a one-line answer.
+            2. If the user wants to apply and the scheme is not clear, ask them politely which scheme they are interested in.
+            3. If they want to apply and the scheme IS clear, tell them which documents they need to upload to the chat.
+            
+            CRITICAL RULES:
+            - Respond ONLY in the EXACT SAME LANGUAGE used by the user in their message: "{user_text}". 
+            - Example: If the user speaks Bengali, you MUST respond in Bengali. If Hindi, in Hindi. If English, in English.
+            - Keep the tone very polite, helpful, and natural (like a human talking on the phone).
+            - Do not use markdown (no **bold**, no *italics*, no bullet points like -, *, 1. 2. 3.) because this text will be directly spoken by a Text-to-Speech voice engine. Use natural pauses and commas."""
 
-        chat_response = sarvam_client.chat.completions(
-            messages=[
-                {"role": "system", "content": voice_system_prompt},
-                {"role": "user", "content": user_text}
-            ]
-        )
-        agent_text = chat_response.choices[0].message.content
+            chat_response = groq_client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": voice_system_prompt},
+                    {"role": "user", "content": user_text}
+                ],
+                temperature=0.7,
+                max_tokens=600
+            )
+            agent_text = chat_response.choices[0].message.content
 
         # 4. Text-to-Speech (Dynamic Language Detection)
         # Use regex to detect if there are Hindi (Devanagari) characters
@@ -606,26 +673,27 @@ async def ivr_handle_speech(request: Request):
 @app.post("/api/agent")
 async def agent_orchestrator(
     user_text: str = Form(...),
-    user_name: str = Form("Citizen"),
-    scheme_id: Optional[str] = Form(None),
-    documents: List[UploadFile] = File([]),
-    doc_types: Optional[str] = Form(None),
+    user_id: str = Form(...),
+    user_name: str = Form(...),
+    documents: List[UploadFile] = File(None),
+    doc_types: str = Form(None),
+    scheme_id: str = Form(None),
+    session_id: str = Form(None)
 ):
-    """
-    🧠 The Orchestrator Agent.
-    - Detects intent via LLM
-    - Routes to the correct sub-agent
-    - Returns structured response with actions
-    """
-    # Filter out empty files
-    documents = [d for d in documents if d.filename != ""]
-    has_files = len(documents) > 0
+    # Fetch stored user profile from database
+    stored_profile = storage_service.get_user_profile(user_id) or {}
+    print(f"👤 Stored profile for {user_id}: {list(stored_profile.keys())}")
     
-    # Language detection (Devanagari check)
-    is_hindi = bool(re.search(r'[\u0900-\u097F]', user_text))
+    # Save user message
+    if session_id:
+        title = user_text[:50] + "..." if len(user_text) > 50 else user_text
+        storage_service.save_chat_message(session_id, user_id, title, "user", user_text)
+    
+    # Text-based logic remains similar...
+    is_hindi = any(char in user_text for char in "अआइईउऊएऐओऔ")
     
     print(f"\n{'='*50}")
-    print(f"🤖 AGENT REQUEST: text='{user_text}', files={has_files}, scheme_id={scheme_id}")
+    print(f"🤖 AGENT REQUEST: text='{user_text}', files={len(documents) if documents else 0}, scheme_id={scheme_id}")
     print(f"{'='*50}")
     
     # Step 1: Detect intent
@@ -638,7 +706,7 @@ async def agent_orchestrator(
     # --------------------------------------------------
     # ROUTE 1: User is asking questions → Knowledge Agent (RAG)
     # --------------------------------------------------
-    if detected_intent == "query" and not has_files:
+    if detected_intent == "query" and not documents:
         retrieved_facts = await async_high_quality_search(user_text)
         context_string = "\n\n---\n\n".join(retrieved_facts)
         
@@ -650,15 +718,34 @@ Answer their question clearly and simply based ONLY on these facts:
 
 {context_string}
 
-If the user seems interested in applying, let them know you can help them apply.
+IMPORTANT GUIDELINES:
+- When a user asks about documents needed, required information, or how to apply, give a DETAILED and STRUCTURED answer.
+- List ALL specific form fields they need to fill (e.g., Full Name, Father's Name, Date of Birth, Gender, Aadhaar Number, Mobile Number, Category, Income, Address, State, District, PIN Code etc.).
+- Mention exact document requirements including accepted file formats (JPG, PNG, PDF) and maximum file sizes (2MB for documents, 1MB for photos).
+- For fields with dropdown options (like Gender, Category, State), list the available options.
+- Use numbered sections and bullet points for clarity.
+- If the user seems interested in applying, let them know you can help them apply by uploading their documents.
 Do not use jargon. Be warm and encouraging."""
 
         async def stream_with_metadata():
             # Send intent metadata first so the client knows the route
             yield f"data: {json.dumps({'meta': {'intent': 'query', 'detected_scheme': detected_scheme}})}\n\n"
-            # Then stream the actual LLM response
+            
+            full_response_content = ""
             async for chunk in get_sarvam_stream(system_prompt, user_text):
+                # Extract content from chunk for saving
+                if chunk.startswith("data:"):
+                    try:
+                        data = json.loads(chunk[5:].strip())
+                        if "content" in data:
+                            full_response_content += data["content"]
+                    except json.JSONDecodeError:
+                        pass
                 yield chunk
+            
+            if session_id and full_response_content:
+                storage_service.save_chat_message(session_id, user_id, "chat", "assistant", full_response_content)
+
 
         return StreamingResponse(
             stream_with_metadata(),
@@ -668,21 +755,27 @@ Do not use jargon. Be warm and encouraging."""
     # --------------------------------------------------
     # ROUTE 2: User wants to apply but NO files attached
     # --------------------------------------------------
-    if detected_intent == "apply" and not has_files:
+    if detected_intent == "apply" and not documents:
         if not detected_scheme:
+            agent_response_text = "I'd love to help you apply! Which scheme would you like to apply for? You can say the scheme name and I'll guide you."
+            if session_id:
+                storage_service.save_chat_message(session_id, user_id, "chat", "assistant", agent_response_text)
             return {
                 "intent": "apply",
                 "action": "clarify_scheme",
-                "response": "I'd love to help you apply! Which scheme would you like to apply for? You can say the scheme name and I'll guide you.",
+                "response": agent_response_text,
                 "available_schemes": {k: v["name"] for k, v in SCHEME_REGISTRY.items()}
             }
         
         scheme = SCHEME_REGISTRY.get(detected_scheme)
         if not scheme:
+            agent_response_text = "I didn't recognize that scheme. Which one do you want to apply for?"
+            if session_id:
+                storage_service.save_chat_message(session_id, user_id, "chat", "assistant", agent_response_text)
             return {
                 "intent": "apply",
                 "action": "clarify_scheme",
-                "response": "I didn't recognize that scheme. Which one do you want to apply for?",
+                "response": agent_response_text,
                 "available_schemes": {k: v["name"] for k, v in SCHEME_REGISTRY.items()}
             }
 
@@ -693,6 +786,9 @@ Do not use jargon. Be warm and encouraging."""
             response = f"Zaroor! {scheme_name} ke liye aapko {doc_names} upload karne honge. Kripya apne documents bhej dijiye."
         else:
             response = f"Great! To apply for {scheme_name}, please upload the following documents: {doc_names}."
+        
+        if session_id:
+            storage_service.save_chat_message(session_id, user_id, "chat", "assistant", response)
             
         return {
             "intent": "apply",
@@ -706,7 +802,7 @@ Do not use jargon. Be warm and encouraging."""
     # --------------------------------------------------
     # ROUTE 3: User has files → Action Agent (Validate + Submit)
     # --------------------------------------------------
-    if has_files:
+    if documents:
         # Resolve scheme
         if not detected_scheme:
             return {
@@ -783,21 +879,26 @@ Do not use jargon. Be warm and encouraging."""
             if "extracted_text" in info:
                 all_ocr_text += info["extracted_text"] + "\n\n"
         
-        # Extract user details using LLM
-        user_data = {"name": user_name} # Base
+        # Start with stored profile data, then layer on OCR extraction
+        user_data = stored_profile.copy()
+        user_data.update({"name": user_name, "phone": user_id}) 
+        
         if all_ocr_text.strip():
             extracted_details = await async_extract_user_details(all_ocr_text)
             user_data.update(extracted_details)
         
-        # Fallback to the main ID if missing
+        # Fallback for ID if still elusive
         primary_doc_type = scheme["required_docs"][0]
         primary_id = validated_docs[primary_doc_type]["extracted_id"]
-        if "extracted_id" not in user_data:
+        if not user_data.get("aadhaar") and not user_data.get("extracted_id"):
             user_data["extracted_id"] = primary_id
             
         submission_result = await submit_to_portal_agent(
             user_data, file_paths_dict, portal_url=scheme["portal_url"]
         )
+        
+        # Add the combined user data to the result so the frontend can preview it
+        submission_result["user_data"] = user_data
         
         # Cleanup
         for p in temp_paths:
@@ -971,19 +1072,37 @@ async def apply_for_scheme(
         messages=[{"role": "user", "content": system_prompt}]
     )
     
+    agent_response_text = chat_response.choices[0].message.content
+    if session_id:
+        storage_service.save_chat_message(session_id, user_id, "chat", "assistant", agent_response_text)
+        
     return {
         "status": submission_result["status"],
         "scheme": scheme["name"],
-        "agent_response": chat_response.choices[0].message.content
+        "agent_response": agent_response_text
     }
 
 # ---------------------------------------------------------
 # Mock Portal & Static Routes
 # ---------------------------------------------------------
 
+@app.get("/api/profile/{phone}")
+async def get_profile(phone: str):
+    """Retrieves full user profile for application filling."""
+    profile = storage_service.get_user_profile(phone)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    return profile
+
+@app.get("/api/chat/sessions/{user_id}")
+async def get_sessions(user_id: str):
+    return storage_service.get_user_sessions(user_id)
+
+@app.get("/api/chat/messages/{session_id}")
+async def get_messages(session_id: str):
+    return storage_service.get_session_messages(session_id)
+
 @app.get("/mock-gov-portal")
-async def get_mock_portal():
-    with open("mock-gov-portal.html", "r") as f:
-        html_content = f.read()
-    return HTMLResponse(content=html_content, status_code=200)
+async def mock_portal():
+    return {"message": "Mock Government Portal Endpoint"}
 # To run: uvicorn main:app --reload

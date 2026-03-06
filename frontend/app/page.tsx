@@ -17,8 +17,8 @@ export default function Dashboard() {
   const [userPhone, setUserPhone] = useState<string | null>(null);
   const router = useRouter();
 
-  // Empty applications state
-  const [applications] = useState<Application[]>([]);
+  // Sessions/Applications state
+  const [applications, setApplications] = useState<any[]>([]);
 
   useEffect(() => {
     const name = localStorage.getItem('user_name');
@@ -26,6 +26,16 @@ export default function Dashboard() {
     if (name && phone) {
       setUserName(name);
       setUserPhone(phone);
+
+      // Fetch user's past chats/applications
+      fetch(`http://localhost:8000/api/chat/sessions/${phone}`)
+        .then(res => res.json())
+        .then(data => {
+          if (Array.isArray(data)) {
+            setApplications(data);
+          }
+        })
+        .catch(err => console.error("Error fetching sessions:", err));
     } else {
       // Force redirect to login if not authenticated
       router.push('/login');
@@ -119,12 +129,29 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            <div className="col-span-full py-12 flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-[2rem] bg-slate-50/30">
-              <p className="text-slate-400 font-bold text-sm tracking-tight text-center px-4">
-                Abhi tak koi application nahi hai. 🇮🇳<br />
-                <span className="text-xs font-medium opacity-70">No active applications found. Access 'Apka Sathi' to apply.</span>
-              </p>
-            </div>
+            {applications.length === 0 ? (
+              <div className="col-span-full py-12 flex flex-col items-center justify-center border-2 border-dashed border-slate-100 rounded-[2rem] bg-slate-50/30">
+                <p className="text-slate-400 font-bold text-sm tracking-tight text-center px-4">
+                  Abhi tak koi application nahi hai. 🇮🇳<br />
+                  <span className="text-xs font-medium opacity-70">No active applications found. Access 'Apka Sathi' to apply.</span>
+                </p>
+              </div>
+            ) : (
+              applications.map((app, idx) => (
+                <Link key={idx} href={`/chat?session_id=${app.session_id}`}>
+                  <div className="bg-white border-2 border-slate-100 p-6 rounded-[2rem] shadow-sm hover:shadow-md hover:border-[#FF9933]/50 transition-all cursor-pointer flex flex-col justify-between h-40">
+                    <div>
+                      <h4 className="font-bold text-slate-800 line-clamp-2">{app.title || "AI Chat Session"}</h4>
+                      <span className="text-xs text-slate-400 mt-2 block">{new Date(app.updated_at).toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center gap-2 mt-4">
+                      <span className="w-2 h-2 rounded-full bg-[#138808] animate-pulse"></span>
+                      <span className="text-[10px] font-black uppercase tracking-widest text-[#138808]">Active</span>
+                    </div>
+                  </div>
+                </Link>
+              ))
+            )}
           </div>
         </div>
       </main>

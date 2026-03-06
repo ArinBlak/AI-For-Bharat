@@ -179,7 +179,7 @@ try:
             print(json.dumps({"debug": "Filling PMAY multi-step form..."}), file=sys.stderr)
             # Step 1
             page.wait_for_selector("#fullname", state="visible")
-            fullname = str(user_data.get("fullname", "") or user_data.get("name", "")).strip()
+            fullname = str(user_data.get("fullname", "") or user_data.get("username", "") or user_data.get("name", "")).strip()
             page.fill("#fullname", fullname or "Citizen")
 
             fathername = str(user_data.get("fathername", "")).strip()
@@ -198,19 +198,19 @@ try:
             except:
                 page.fill("#dob", "1990-01-01")
                 
-            gender = str(user_data.get("gender", "male")).lower()
-            if gender in ('male', 'female', 'other'):
-                page.select_option("#gender", gender)
-            else:
-                page.select_option("#gender", "male")
+            gender = str(user_data.get("gender", "male")).lower().strip()
+            try:
+                page.select_option("#gender", gender, timeout=1000)
+            except:
+                page.select_option("#gender", "male", timeout=1000)
                 
             # strict digit filtering for JS validation
-            raw_aadhaar = str(user_data.get("aadhaar", "") or user_data.get("extracted_id", ""))
+            raw_aadhaar = str(user_data.get("aadhaar", "") or user_data.get("aadhar", "") or user_data.get("extracted_id", ""))
             aadhaar_val = "".join(filter(str.isdigit, raw_aadhaar))
             if len(aadhaar_val) < 12: aadhaar_val = "123456789012"
             page.fill("#aadhaar", aadhaar_val[:12])
             
-            raw_mobile = str(user_data.get("mobile", ""))
+            raw_mobile = str(user_data.get("mobile", "") or user_data.get("phone", ""))
             mobile_val = "".join(filter(str.isdigit, raw_mobile))
             if len(mobile_val) < 10: mobile_val = "9876543210"
             page.fill("#mobile", mobile_val[:10])
@@ -218,11 +218,11 @@ try:
             email_val = user_data.get("email", "") or "citizen@example.com"
             page.fill("#email", email_val)
             
-            category = str(user_data.get("category", "ews")).lower()
+            category = str(user_data.get("category", "ews")).lower().strip()
             try:
-                page.select_option("#category", category)
+                page.select_option("#category", category, timeout=1000)
             except:
-                page.select_option("#category", "ews") # fallback
+                page.select_option("#category", "ews", timeout=1000) # fallback
                 
             raw_income = str(user_data.get("income", ""))
             income_val = "".join(filter(str.isdigit, raw_income))
@@ -243,11 +243,11 @@ try:
                 
             page.fill("#address", user_data.get("address", "") or "Village House")
             
-            state = str(user_data.get("state", "delhi")).lower().replace(" ", "-")
+            state = str(user_data.get("state", "delhi")).lower().replace(" ", "-").strip()
             try:
-                page.select_option("#state", state)
+                page.select_option("#state", state, timeout=1000)
             except:
-                page.select_option("#state", "delhi") # fallback
+                page.select_option("#state", "delhi", timeout=1000) # fallback
                 
             page.fill("#district", user_data.get("district", "") or "Central")
             page.fill("#city", user_data.get("city", "") or "Delhi")
@@ -292,11 +292,11 @@ try:
             except:
                 page.fill("#dob", "1990-01-01")
                 
-            gender = str(user_data.get("gender", "male")).lower()
-            if gender in ('male', 'female', 'other'):
-                page.select_option("#gender", gender)
-            else:
-                page.select_option("#gender", "male")
+            gender = str(user_data.get("gender", "male")).lower().strip()
+            try:
+                page.select_option("#gender", gender, timeout=1000)
+            except:
+                page.select_option("#gender", "male", timeout=1000)
                 
             raw_aadhaar = str(user_data.get("aadhaar", "") or user_data.get("extracted_id", ""))
             aadhaar_val = "".join(filter(str.isdigit, raw_aadhaar))
@@ -311,11 +311,11 @@ try:
             address = str(user_data.get("address", ""))
             page.fill("#address", address or "Default Address")
             
-            state = str(user_data.get("state", "delhi")).lower().replace(" ", "_")
+            state = str(user_data.get("state", "delhi")).lower().replace(" ", "_").strip()
             try:
-                page.select_option("#state", state)
+                page.select_option("#state", state, timeout=1000)
             except:
-                page.select_option("#state", "west_bengal") # fallback
+                page.select_option("#state", "west_bengal", timeout=1000) # fallback
                 
             district = str(user_data.get("district", ""))
             page.fill("#district", district or "Central")
@@ -331,22 +331,22 @@ try:
                     raise Exception(f"Validation failed on Step 1: {', '.join(ui_errors)}")
                 raise wait_err
                 
-            occ = str(user_data.get("occupation", "other")).lower()
+            occ = str(user_data.get("occupation", "other")).lower().strip()
             try:
-                page.select_option("#occupation", occ)
+                page.select_option("#occupation", occ, timeout=1000)
             except:
-                page.select_option("#occupation", "other")
+                page.select_option("#occupation", "other", timeout=1000)
                 
             raw_income = str(user_data.get("income", ""))
             income_val = "".join(filter(str.isdigit, raw_income))
             if not income_val: income_val = "50000"
             page.fill("#income", income_val)
             
-            ea = str(user_data.get("existingAccount", "no")).lower()
-            if ea in ('yes', 'no'):
-                page.select_option("#existingAccount", ea)
-            else:
-                page.select_option("#existingAccount", "no")
+            ea = str(user_data.get("existingAccount", "no")).lower().strip()
+            try:
+                page.select_option("#existingAccount", ea, timeout=1000)
+            except:
+                page.select_option("#existingAccount", "no", timeout=1000)
                 
             page.click("#nextStep2")
             

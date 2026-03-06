@@ -1,0 +1,29 @@
+[
+    {
+        "chunk_id": "pmay_application_form_fields_1",
+        "content": "PRADHAN MANTRI AWAAS YOJANA (PMAY) - APPLICATION FORM DETAILS AND REQUIRED INFORMATION\n\nTo apply for PM Awas Yojana (PMAY), applicants must provide the following details in the application form:\n\n1. PERSONAL DETAILS (व्यक्तिगत विवरण):\n- Full Name (पूरा नाम): As per Aadhaar card\n- Father's/Husband's Name (पिता/पति का नाम)\n- Date of Birth (जन्म तिथि): In DD/MM/YYYY format\n- Gender (लिंग): Male (पुरुष), Female (महिला), or Other (अन्य)\n- Aadhaar Number (आधार नंबर): 12-digit Aadhaar number\n\n2. CONTACT DETAILS (संपर्क विवरण):\n- Mobile Number (मोबाइल नंबर): 10-digit mobile number\n- Email Address (ईमेल): Optional\n\n3. CATEGORY & INCOME DETAILS (श्रेणी और आय विवरण):\n- Category (वर्ग): Must select one from:\n  * EWS - Economically Weaker Section (आर्थिक रूप से कमजोर वर्ग)\n  * LIG - Low Income Group (कम आय वर्ग)\n  * MIG-I - Middle Income Group I (मध्यम आय वर्ग I)\n  * MIG-II - Middle Income Group II (मध्यम आय वर्ग II)\n- Annual Family Income (वार्षिक पारिवारिक आय): Total yearly income in rupees",
+        "metadata": {
+            "Header 1": "PMAY Application Form Details",
+            "Header 2": "Personal and Income Details",
+            "source_document": "pmay_application_guide.md"
+        }
+    },
+    {
+        "chunk_id": "pmay_application_form_fields_2",
+        "content": "PRADHAN MANTRI AWAAS YOJANA (PMAY) - ADDRESS AND DOCUMENT REQUIREMENTS\n\n4. ADDRESS DETAILS (पता विवरण):\n- Full Address (पूरा पता): House Number, Street, Locality\n- State (राज्य): Select from Indian states including Andhra Pradesh, Bihar, Chhattisgarh, Delhi, Goa, Gujarat, Haryana, Himachal Pradesh, Jharkhand, Karnataka, Kerala, Madhya Pradesh, Maharashtra, Manipur, Meghalaya, Mizoram, Nagaland, Odisha, Punjab, Rajasthan, Sikkim, Tamil Nadu, Telangana, Tripura, Uttar Pradesh, Uttarakhand, West Bengal\n- District (जिला)\n- City/Town/Village (शहर/कस्बा/गांव)\n- PIN Code (पिन कोड): 6-digit PIN code\n\n5. REQUIRED DOCUMENTS (आवश्यक दस्तावेज) - Clear scanned copies must be uploaded:\n- Aadhaar Card Copy (आधार कार्ड की प्रति): Accepted formats - JPG, PNG, PDF, Maximum size 2MB\n- Income Certificate (आय प्रमाण पत्र): Accepted formats - JPG, PNG, PDF, Maximum size 2MB\n- Passport Size Photo (पासपोर्ट साइज फोटो): Accepted formats - JPG, PNG, Maximum size 1MB\n\n6. DECLARATION (घोषणा):\n- A checkbox confirming that all provided information is true and correct must be checked before submitting.\n\nThe application is submitted online through the PMAY portal. After successful submission, you will receive a reference number for tracking your application status.",
+        "metadata": {
+            "Header 1": "PMAY Application Form Details",
+            "Header 2": "Address and Document Requirements",
+            "source_document": "pmay_application_guide.md"
+        }
+    },
+    {
+        "chunk_id": "pmay_application_eligibility",
+        "content": "PRADHAN MANTRI AWAAS YOJANA (PMAY) - ELIGIBILITY AND HOW TO APPLY\n\nELIGIBILITY CRITERIA:\n- The applicant must belong to EWS (Economically Weaker Section), LIG (Low Income Group), MIG-I (Middle Income Group I), or MIG-II (Middle Income Group II) category.\n- EWS: Annual household income up to Rs 3 lakhs\n- LIG: Annual household income between Rs 3 lakhs to Rs 6 lakhs\n- MIG-I: Annual household income between Rs 6 lakhs to Rs 12 lakhs\n- MIG-II: Annual household income between Rs 12 lakhs to Rs 18 lakhs\n- No family member should own a pucca house anywhere in India.\n- Women ownership or co-ownership is mandatory for EWS and LIG categories.\n\nBENEFITS:\n- Interest subsidy up to Rs 2.67 lakhs under CLSS (Credit Linked Subsidy Scheme) component on home loans.\n- Unit assistance of Rs 1.20 lakh in plain areas and Rs 1.30 lakh in hill states under BLC (Beneficiary Led Construction).\n\nHOW TO APPLY:\n1. Visit the PMAY portal or approach a Common Service Centre (CSC).\n2. Fill in all personal details, contact details, category and income details, and address details in the application form.\n3. Upload the required 3 documents: Aadhaar Card copy, Income Certificate, and Passport Size Photo.\n4. Check the declaration checkbox confirming all information is true.\n5. Submit the application and save the reference number for tracking.\n\nAfter submission, your application will be verified by local authorities. You can track status using your reference number.",
+        "metadata": {
+            "Header 1": "PMAY Application Form Details",
+            "Header 2": "Eligibility and How to Apply",
+            "source_document": "pmay_application_guide.md"
+        }
+    }
+]
