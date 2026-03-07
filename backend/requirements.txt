@@ -6,11 +6,12 @@ python-dotenv
 python-multipart
 requests
 httpx
-pinecone
+pinecone-client
 sentence-transformers
 torch
 langchain-text-splitters
 pydantic
 sarvamai
+groq
 playwright==1.40.0
 
