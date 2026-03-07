@@ -47,6 +47,20 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 
 ##  Technical Architecture
 
+### System Flow Diagram
+```mermaid
+graph TD
+    A[Citizen / User] -->|Voice/Text| B(Multilingual Agent)
+    B -->|Search Query| C{RAG Engine}
+    C -->|Context| D[Pinecone Vector DB]
+    D -->|Scheme Info| C
+    C -->|Knowledge| B
+    B -->|Document Validation| E[Sarvam OCR]
+    E -->|Verified Data| F[Automated Submission]
+    F -->|RPA Process| G[Govt Portals]
+    B -->|Save History| H[AWS DynamoDB]
+```
+
 ### Core Stack
 - **Frontend**: Next.js 14, Tailwind CSS, Framer Motion (Glassmorphism UI).
 - **Backend**: FastAPI (Python), Uvicorn.
@@ -69,12 +83,21 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 
 ##  Future Roadmap: Scaling & Implementation
 
-### 1. Enhanced Scheme Support
+### 1. Unified Scheme Hub (Scaling Strategy)
+The platform is designed for **exponential scaling**. Our goal is to integrate all major Indian welfare schemes:
+- **Health**: Ayushman Bharat (PM-JAY) e-card generation.
+- **Education**: PM-SHRI and scholarship automated tracking.
+- **Farmer Support**: Expanded KCC (Kisan Credit Card) and fertilizer subsidy automation.
+- **Pension**: Atal Pension Yojana (APY) eligibility and registration.
+
+> [!TIP]
+> **Scheme registry scaling:** We will implement a `scheme-config` microservice where adding a new government scheme requires zero code changes—just a schema definition for the portal fields.
+
+### 2. Enhanced Scheme Support
 - **PMAY-G & PMAY-U**: Advanced eligibility checking using geo-tagging and income verification APIs.
 - **Jan Dhan Yojana (PMJDY)**: Direct integration with e-KYC modules for instant account opening.
-- **One-Click Scaling**: Framework designed to add new schemes by simply updating the `SCHEME_REGISTRY` mapping.
 
-### 2. Pros & Automation Benefits
+### 3. Pros & Automation Benefits
 - **Zero Jargon**: AI converts complex legal policy text into simple, spoken local dialects.
 - **Automation Efficiency**: Reduces manual form-filling time from 30 minutes to <2 minutes.
 - **Self-Correction**: AI-driven validation catches errors in IDs *before* they hit the government portal, reducing rejection rates.
