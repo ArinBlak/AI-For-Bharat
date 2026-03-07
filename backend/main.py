@@ -94,7 +94,7 @@ def get_scheme_list_for_prompt():
 # Connect to Pinecone
 pinecone_api_key = os.getenv("PINECONE_API_KEY")
 pc = Pinecone(api_key=pinecone_api_key)
-index_name = "yojana-setu"
+index_name = "yojana-setu-v2"
 index = pc.Index(index_name)
 print("Pinecone Database connected!")
 
