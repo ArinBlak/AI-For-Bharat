@@ -401,7 +401,12 @@ try:
         print(json.dumps({"debug": "Clicking submit..."}), file=sys.stderr)
         if "pm-kisan-portal.vercel.app" in target_url:
             page.click("#submitBtn")
+        elif "/mock-gov-portal" in target_url:
+            # Match the actual ID in our mock-gov-portal.html
+            page.click("#submit-button")
         else:
+            # PMAY (dummy-pmawas) uses #btn-submit
+            page.wait_for_selector("#btn-submit", state="visible")
             page.click("#btn-submit")
         
         # Wait for success message
@@ -480,10 +485,37 @@ async def submit_to_portal_agent(user_data: dict, file_paths: dict, portal_url: 
         with open(script_file, "w", encoding="utf-8") as f:
             f.write(dynamic_script)
         
+        def check_and_install_playwright():
+            """Attempts to install browsers if they are missing (Self-healing for Render)."""
+            try:
+                import playwright
+                print("🔍 Checking Playwright browsers...")
+                # Try to launch chromium just to check
+                from playwright.sync_api import sync_playwright
+                try:
+                    with sync_playwright() as p:
+                        browser = p.chromium.launch(headless=True)
+                        browser.close()
+                    print("✅ Playwright browsers are ready.")
+                    return True
+                except Exception as e:
+                    if "Executable doesn't exist" in str(e):
+                        print("⚠️ Micro-OS: Playwright browsers missing. Attempting self-install...")
+                        subprocess.run([sys.executable, "-m", "playwright", "install", "chromium"], check=True)
+                        return True
+                    raise e
+            except Exception as e:
+                print(f"❌ Playwright self-check failed: {e}")
+                return False
+
         def run_sync_subprocess():
             import subprocess
             
-            # Determine best python executable (.venv is preferred)
+            # 1. Attempt self-healing installation if on a cloud environment
+            if os.getenv("RENDER") or os.getenv("RAILWAY"):
+                check_and_install_playwright()
+            
+            # 2. Determine best python executable (.venv is preferred)
             python_exe = sys.executable
             venv_python = os.path.join(os.getcwd(), ".venv", "Scripts", "python.exe")
             if os.name != 'nt':
