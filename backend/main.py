@@ -16,12 +16,17 @@ import re
 from pinecone import Pinecone
 from sarvamai import SarvamAI
 from groq import Groq
-from sentence_transformers import SentenceTransformer, CrossEncoder
-from storage_service import StorageService
+# Lazy load AI models to ensure the port opens immediately on startup
+_model = None
+def get_model():
+    global _model
+    if _model is None:
+        print("🚀 Loading AI Model (Lazy Load activated)...")
+        from sentence_transformers import SentenceTransformer
+        _model = SentenceTransformer('all-MiniLM-L6-v2')
+    return _model
 
-load_dotenv()
-
-# Initialize DynamoDB storage service (used by /register and /login)
+# Initialize DynamoDB storage service
 storage_service = StorageService()
 
 app = FastAPI(title="Yojana-Setu Phygital Backend")
