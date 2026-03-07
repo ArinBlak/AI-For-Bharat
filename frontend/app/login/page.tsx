@@ -3,6 +3,8 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { API_BASE_URL } from '@/lib/constants';
+
 
 export default function LoginPage() {
     const [phone, setPhone] = useState('');
@@ -19,7 +21,7 @@ export default function LoginPage() {
             const body = new FormData();
             body.append('phone', phone);
 
-            const res = await fetch('http://localhost:8000/login', {
+            const res = await fetch(`${API_BASE_URL}/login`, {
                 method: 'POST',
                 body: body,
             });

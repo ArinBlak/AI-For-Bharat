@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
+import { API_BASE_URL } from '@/lib/constants';
+
 
 interface Message {
     id: string;
@@ -53,7 +55,7 @@ export default function WhatsAppSimulator() {
                 content: [{ text: m.text }]
             }))));
 
-            const response = await fetch('http://localhost:8000/chat', {
+            const response = await fetch(`${API_BASE_URL}/chat`, {
                 method: 'POST',
                 body: formData,
             });

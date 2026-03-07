@@ -32,16 +32,11 @@ class StorageService:
     def get_user_sessions(self, user_id):
         """Retrieves all chat sessions for a specific user from DynamoDB."""
         try:
-            # Query the sessions table where user_id is the partition key (requires GSI or scan if user_id is not PK)
-            # Assuming we use a GSI on user_id for sessions table
-            # For simplicity, if user_id is not the primary key, we might need to scan or use a GSI.
-            # Let's assume user_id is an attribute and we query by it.
-            # In a real app, you'd add a GSI on 'user_id' in chat_sessions.
-            from boto3.dynamodb.conditions import Key
+            from boto3.dynamodb.conditions import Attr
             
-            # Using Scan for now if GSI isn't confirmed, but Query is better if PK is user_id
+            # Use scan with FilterExpression since user_id is not the Partition Key
             response = self.sessions_table.scan(
-                FilterExpression=Key('user_id').eq(user_id)
+                FilterExpression=Attr('user_id').eq(user_id)
             )
             items = response.get('Items', [])
             

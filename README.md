@@ -4,14 +4,14 @@ Yojana-Setu is a state-of-the-art **Phygital (Physical + Digital)** AI platform 
 
 ---
 
-## 🖼️ Project Views
+##  Project Views
 | Desktop Interface | Mobile/Tablet View | Multi-Step Automation |
 | :---: | :---: | :---: |
 | ![View 1](./frontend/public/view1.png) | ![View 2](./frontend/public/view2.png) | ![View 3](./frontend/public/view3.png) |
 
 ---
 
-## 🚀 Quick Start Manual
+##  Quick Start Manual
 
 ### 1. Prerequisites
 - **Python 3.10+** & **Node.js 18+**
@@ -39,13 +39,13 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 
 ---
 
-## 🌐 Live Application
+##  Live Application
 > [!NOTE]
 > **Live Link:** [Coming Soon]
 
 ---
 
-## 🛠️ Technical Architecture
+##  Technical Architecture
 
 ### Core Stack
 - **Frontend**: Next.js 14, Tailwind CSS, Framer Motion (Glassmorphism UI).
@@ -59,7 +59,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 
 ---
 
-## 🎯 Current Implementation Features
+##  Current Implementation Features
 - **Multilingual Voice-to-Voice Agent**: Real-time support in Hindi, English, and other regional languages.
 - **Automated Scheme Filing**: RPA-driven submission to portals like PMAY and PMJDY.
 - **Document Intelligence**: Auto-extraction of Aadhaar, PAN, and Income details from uploads.
@@ -67,7 +67,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 
 ---
 
-## 🔮 Future Roadmap: Scaling & Implementation
+##  Future Roadmap: Scaling & Implementation
 
 ### 1. Enhanced Scheme Support
 - **PMAY-G & PMAY-U**: Advanced eligibility checking using geo-tagging and income verification APIs.
@@ -85,7 +85,7 @@ Open [http://localhost:3000](http://localhost:3000) to view the application.
 
 ---
 
-## 🇮🇳 Make In India
+##  Make In India
 Yojana-Setu is built with the vision of **Digital Inclusion for All**, ensuring that the benefits of digital India reach the last person in the queue.
 
 ---

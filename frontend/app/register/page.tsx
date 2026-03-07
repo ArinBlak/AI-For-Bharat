@@ -2,6 +2,8 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { API_BASE_URL } from '@/lib/constants';
+
 
 const STATES = [
     'Andhra Pradesh', 'Bihar', 'Chhattisgarh', 'Delhi', 'Goa', 'Gujarat', 'Haryana',
@@ -53,7 +55,7 @@ export default function RegisterPage() {
                 body.append(key, value);
             });
 
-            const res = await fetch('http://localhost:8000/register', {
+            const res = await fetch(`${API_BASE_URL}/register`, {
                 method: 'POST',
                 body: body,
             });

@@ -3,6 +3,8 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { API_BASE_URL } from '@/lib/constants';
+
 
 interface Application {
   id: string;
@@ -28,7 +30,7 @@ export default function Dashboard() {
       setUserPhone(phone);
 
       // Fetch user's past chats/applications
-      fetch(`http://localhost:8000/api/chat/sessions/${phone}`)
+      fetch(`${API_BASE_URL}/api/chat/sessions/${phone}`)
         .then(res => res.json())
         .then(data => {
           if (Array.isArray(data)) {

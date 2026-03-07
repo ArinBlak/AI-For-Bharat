@@ -5,6 +5,8 @@ import Link from 'next/link';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useSearchParams, useRouter } from 'next/navigation';
+import { API_BASE_URL } from '@/lib/constants';
+
 
 interface Message {
     role: 'user' | 'assistant' | 'system';
@@ -53,7 +55,7 @@ export default function ChatPage() {
         } else {
             setSessionId(currentSessionId);
             // Fetch existing messages
-            fetch(`http://localhost:8000/api/chat/messages/${currentSessionId}`)
+            fetch(`${API_BASE_URL}/api/chat/messages/${currentSessionId}`)
                 .then(res => {
                     if (!res.ok) throw new Error("Fetch failed");
                     return res.json();
@@ -136,7 +138,7 @@ export default function ChatPage() {
             formData.append('user_id', userPhone || "9876543210");
             if (detectedScheme) formData.append('scheme_id', detectedScheme);
 
-            const response = await fetch('http://localhost:8000/api/voice-agent', {
+            const response = await fetch(`${API_BASE_URL}/api/voice-agent`, {
                 method: 'POST',
                 body: formData,
             });
@@ -177,7 +179,7 @@ export default function ChatPage() {
 
             // Trigger visual auto-fill in the dummy website preview
             setTimeout(() => {
-                fetch(`http://localhost:8000/api/profile/${userPhone || "9876543210"}`)
+                fetch(`${API_BASE_URL}/api/profile/${userPhone || "9876543210"}`)
                     .then(res => res.json())
                     .then(profile => {
                         const iframe = document.querySelector('iframe');
@@ -205,7 +207,7 @@ export default function ChatPage() {
                 if (requiredDocs.length > 0) formData.append('doc_types', requiredDocs.join(','));
             }
 
-            const response = await fetch('http://localhost:8000/api/agent', {
+            const response = await fetch(`${API_BASE_URL}/api/agent`, {
                 method: 'POST',
                 body: formData,
             });

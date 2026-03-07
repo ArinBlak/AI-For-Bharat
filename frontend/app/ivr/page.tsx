@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useRouter } from 'next/navigation';
+import { API_BASE_URL } from '@/lib/constants';
+import React, { useEffect, useState, useRef } from 'react';
 import Link from 'next/link';
 
 export default function BrowserIVR() {
@@ -16,7 +18,7 @@ export default function BrowserIVR() {
 
     const sayGreeting = async () => {
         try {
-            const res = await fetch('http://localhost:8000/api/voice-agent/welcome');
+            const res = await fetch(`${API_BASE_URL}/api/voice-agent/welcome`);
             if (!res.ok) throw new Error("Failed to fetch welcome audio");
             const data = await res.json();
 
@@ -128,7 +130,7 @@ export default function BrowserIVR() {
         formData.append('user_name', user_name);
 
         try {
-            const res = await fetch('http://localhost:8000/api/voice-agent', {
+            const res = await fetch(`${API_BASE_URL}/api/voice-agent`, {
                 method: 'POST',
                 body: formData
             });
