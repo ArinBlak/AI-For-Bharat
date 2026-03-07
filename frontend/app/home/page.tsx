@@ -8,6 +8,7 @@ import { Feature } from "@/components/ui/feature-with-image-carousel";
 import DisplayCards from "@/components/ui/display-cards";
 import { Languages, Bot, Mic, RefreshCw, Sparkles, Play, Pause, Volume2, Github, Twitter, Linkedin, Instagram, Mail, MapPin, Phone } from "lucide-react";
 import { useRef } from 'react';
+import Preloader from "@/components/Preloader";
 
 export default function HomeLandingPage() {
     const [scrolled, setScrolled] = useState(false);
@@ -34,6 +35,7 @@ export default function HomeLandingPage() {
 
     return (
         <div className="min-h-screen bg-[#fafafa] text-slate-900 font-sans selection:bg-[#FF9933]/30 selection:text-[#FF9933] overflow-x-hidden relative">
+            <Preloader />
 
             {/* Top Pattern Banner (Like Sarvam's 'Indus is live in beta') */}
             <div className="bg-[#e86a33] text-white text-xs md:text-sm font-semibold flex items-center justify-center py-2.5 px-4 gap-3 relative z-50 overflow-hidden">

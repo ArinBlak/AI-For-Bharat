@@ -16,6 +16,7 @@ dist/
 data/db/
 *.log
 *.sqlite
+backend/*.db
 
 # --- Node / React / Next.js ---
 node_modules/
@@ -45,3 +46,18 @@ _temp_*
 # --- OS generated files ---
 .DS_Store
 Thumbs.db
+
+# --- Data Preparation & Indexing ---
+backend/data/
+backend/build_vector_db.py
+backend/chunk_script.py
+backend/format_md.py
+
+# --- Utility & Setup Scripts ---
+backend/setup_dynamodb.py
+backend/create_dummy_data.py
+
+# --- Test Scripts ---
+backend/query_db.py
+backend/test_fastapi.py
+backend/test_sarvam.py
